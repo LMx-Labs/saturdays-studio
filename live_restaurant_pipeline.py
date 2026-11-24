@@ -427,6 +427,7 @@ def process_restaurant(
     process_all: bool = False,
     token: Optional[str] = None,
     upload_only: bool = False,
+    missing_only: bool = False,
     target_dish: Optional[str] = None,
     target_category: Optional[str] = None,
     api_base: str = LIVE_API_BASE,
@@ -511,6 +512,17 @@ def process_restaurant(
             if target_dish and target_dish.lower() not in item.get("name", "").lower():
                 continue
             dishes_to_process.append((cat_name, item))
+
+    if missing_only:
+        filtered = []
+        for cat_name, item in dishes_to_process:
+            c_safe = safe_name(cat_name)
+            d_safe = safe_name(item["name"])
+            target_file = restaurant_dir / c_safe / f"{d_safe}.png"
+            if not target_file.exists():
+                filtered.append((cat_name, item))
+        dishes_to_process = filtered
+        print(f"  🔍 Filtered for missing images only: {len(dishes_to_process)} unrendered dishes found.")
 
     if not process_all and not target_dish:
         dishes_to_process = dishes_to_process[:count]
@@ -664,6 +676,7 @@ Examples:
     parser.add_argument("--email", default=None, help="Saturdays admin email for auto-login")
     parser.add_argument("--password", default=None, help="Saturdays admin password for auto-login")
     parser.add_argument("--upload-only", action="store_true", help="Upload already generated images/descriptions to Saturdays without re-rendering")
+    parser.add_argument("--missing-only", action="store_true", help="Render only dishes that do not have an image on disk")
     parser.add_argument("--skip-images", action="store_true", help="Generate only descriptions, skipping GPU image synthesis")
     parser.add_argument("--resolution", type=int, default=480, choices=[480, 960, 1600], help="Image resolution width/height in px (default: 480)")
     parser.add_argument("--api-base", default=LIVE_API_BASE, help=f"Saturdays API base URL (default: {LIVE_API_BASE})")
@@ -698,6 +711,7 @@ Examples:
         process_all=args.all,
         token=token,
         upload_only=args.upload_only,
+        missing_only=args.missing_only,
         target_dish=args.dish,
         target_category=args.category,
         api_base=args.api_base,

@@ -934,6 +934,64 @@ def start_batch(payload: Dict[str, Any]):
     return {"success": True, "message": f"Started batch generation for {len(dishes)} dishes at {resolution}px."}
 
 
+@app.post("/api/batch/missing")
+def start_batch_missing(payload: Dict[str, Any]):
+    if batch_mgr.is_running:
+        raise HTTPException(status_code=400, detail="A batch job is already running on the GPU.")
+
+    branch_id = payload.get("branch_id")
+    restaurant_name = payload.get("restaurant_name")
+    token = current_auth_state.get("token") or payload.get("token")
+    resolution = int(payload.get("resolution", 480))
+
+    if not branch_id and not restaurant_name:
+        raise HTTPException(status_code=400, detail="branch_id or restaurant_name is required.")
+
+    if not branch_id:
+        branches = get_live_branches()
+        for b in branches:
+            if restaurant_name.lower() in b.get("name", "").lower():
+                branch_id = b["id"]
+                restaurant_name = b["name"]
+                break
+
+    if not branch_id:
+        raise HTTPException(status_code=404, detail=f"Branch not found for {restaurant_name}")
+
+    menu = get_branch_menu(branch_id)
+    b_name = menu.get("branch_name") or restaurant_name
+    rest_safe = safe_name(b_name)
+
+    missing_dishes = []
+    for cat in menu.get("categories", []):
+        cat_name = cat.get("name", "General")
+        cat_safe = safe_name(cat_name)
+        for item in cat.get("items", []):
+            d_name = item.get("name", "")
+            d_safe = safe_name(d_name)
+            local_path = OUTPUT_DIR / rest_safe / cat_safe / f"{d_safe}.png"
+            if not local_path.exists():
+                missing_dishes.append({
+                    "id": item.get("id"),
+                    "name": d_name,
+                    "category": cat_name,
+                    "price": item.get("base_price", 0.0),
+                    "is_veg": item.get("is_veg", False),
+                    "description": item.get("description", "")
+                })
+
+    if not missing_dishes:
+        return {"success": True, "count": 0, "message": f"All dishes for {b_name} already have generated images on disk! None missing."}
+
+    t = threading.Thread(target=batch_worker, args=(b_name, missing_dishes, token, resolution), daemon=True)
+    t.start()
+    return {
+        "success": True,
+        "count": len(missing_dishes),
+        "message": f"Started missing-only batch generation for {len(missing_dishes)} dishes at {resolution}px."
+    }
+
+
 @app.get("/api/batch/status")
 def get_batch_status():
     return batch_mgr.to_dict()
@@ -1063,6 +1121,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <div class="text-lg font-bold text-blue-400" x-text="countUploaded()"></div>
             <div class="text-[10px] text-blue-400 uppercase tracking-wider">Published</div>
           </div>
+          <div class="text-center px-4 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-all" @click="filterStatus = filterStatus === 'missing' ? 'all' : 'missing'" :class="filterStatus === 'missing' ? 'ring-2 ring-amber-400' : ''" title="Click to filter dishes by Missing">
+            <div class="text-lg font-bold text-amber-400" x-text="countUnrendered()"></div>
+            <div class="text-[10px] text-amber-400 uppercase tracking-wider">Missing</div>
+          </div>
 
           <!-- Resolution Toggle (480px, 960px, 1600px) -->
           <div class="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1 text-xs">
@@ -1077,7 +1139,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <span x-text="autoRunning ? 'Auto Running Pipeline...' : '⚡ 1-Click Auto Flow'"></span>
           </button>
 
-          <button @click="startBatchForCurrentBranch()" :disabled="batch.is_running" class="btn btn-warning btn-sm gap-2">
+          <button @click="startBatchForMissingDishes()" :disabled="batch.is_running || countUnrendered() === 0" class="btn btn-warning btn-sm gap-2 shadow-lg shadow-amber-500/20" title="Only generates dishes that do not have an image yet on the GPU">
+            <span>⚡</span>
+            <span x-text="batch.is_running ? 'Batch Running...' : (countUnrendered() > 0 ? `Render Missing (${countUnrendered()})` : 'All Rendered ✓')"></span>
+          </button>
+
+          <button @click="startBatchForCurrentBranch()" :disabled="batch.is_running" class="btn btn-outline btn-warning btn-sm gap-2">
             <span>🎨</span>
             <span x-text="batch.is_running ? 'Batch Running...' : 'Generate All on GPU'"></span>
           </button>
@@ -1100,9 +1167,34 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
       </div>
 
+      <!-- Dish Filter Tabs -->
+      <div class="flex flex-wrap items-center justify-between bg-black/20 p-2.5 rounded-xl border border-white/5 gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400 font-medium px-2">Filter Menu:</span>
+          <button @click="filterStatus = 'all'" :class="filterStatus === 'all' ? 'bg-white/20 text-white font-semibold' : 'text-slate-400 hover:text-white'" class="px-3 py-1 rounded-lg text-xs transition">
+            All (<span x-text="menuData.total_dishes || 0"></span>)
+          </button>
+          <button @click="filterStatus = 'missing'" :class="filterStatus === 'missing' ? 'bg-amber-500 text-black font-bold shadow-md shadow-amber-500/30' : 'text-amber-400 hover:text-amber-300'" class="px-3 py-1 rounded-lg text-xs transition flex items-center gap-1.5">
+            <span>⚠️</span> Missing Images (<span x-text="countUnrendered()"></span>)
+          </button>
+          <button @click="filterStatus = 'rendered'" :class="filterStatus === 'rendered' ? 'bg-emerald-500/20 text-emerald-400 font-semibold border border-emerald-500/40' : 'text-slate-400 hover:text-emerald-300'" class="px-3 py-1 rounded-lg text-xs transition">
+            Rendered (<span x-text="countRendered()"></span>)
+          </button>
+          <button @click="filterStatus = 'published'" :class="filterStatus === 'published' ? 'bg-blue-500/20 text-blue-400 font-semibold border border-blue-500/40' : 'text-slate-400 hover:text-blue-300'" class="px-3 py-1 rounded-lg text-xs transition">
+            Published (<span x-text="countUploaded()"></span>)
+          </button>
+        </div>
+        <div x-show="filterStatus === 'missing' && countUnrendered() > 0" class="text-xs text-amber-400 font-medium flex items-center gap-2 pr-2">
+          <span>Showing only unrendered dishes</span>
+          <button @click="startBatchForMissingDishes()" :disabled="batch.is_running" class="btn btn-warning btn-xs gap-1">
+            <span>⚡ Render Missing Now</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Categories & Dishes Grid -->
       <div class="space-y-8">
-        <template x-for="cat in menuData.categories" :key="cat.id">
+        <template x-for="cat in filteredCategories()" :key="cat.id">
           <div class="space-y-4">
             <div class="flex items-center justify-between border-b border-white/10 pb-2">
               <h2 class="text-base font-bold text-white flex items-center gap-2">
@@ -1339,6 +1431,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         fixingMobile: false,
         selectedResolution: 480,
         autoRunning: false,
+        filterStatus: 'all',
 
         async init() {
           await this.fetchStatus();
@@ -1384,6 +1477,28 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           let c = 0;
           this.menuData.categories?.forEach(cat => cat.items.forEach(it => { if (it.uploaded) c++; }));
           return c;
+        },
+
+        countUnrendered() {
+          let c = 0;
+          this.menuData.categories?.forEach(cat => cat.items.forEach(it => { if (!it.has_local_image) c++; }));
+          return c;
+        },
+
+        matchesFilter(dish) {
+          if (this.filterStatus === 'missing') return !dish.has_local_image;
+          if (this.filterStatus === 'rendered') return dish.has_local_image;
+          if (this.filterStatus === 'published') return dish.uploaded;
+          return true;
+        },
+
+        filteredCategories() {
+          if (!this.menuData.categories) return [];
+          if (this.filterStatus === 'all') return this.menuData.categories;
+          return this.menuData.categories.map(cat => ({
+            ...cat,
+            items: cat.items.filter(it => this.matchesFilter(it))
+          })).filter(cat => cat.items.length > 0);
         },
 
         async renderSingleDish(dish) {
@@ -1443,6 +1558,34 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             alert('Upload failed: ' + e);
           } finally {
             dish.uploading = false;
+          }
+        },
+
+        async startBatchForMissingDishes() {
+          if (this.batch.is_running) return alert('Batch generation is already running.');
+          const missingDishes = [];
+          this.menuData.categories?.forEach(cat => {
+            cat.items.forEach(it => {
+              if (!it.has_local_image) missingDishes.push(it);
+            });
+          });
+          if (missingDishes.length === 0) {
+            return alert('🎉 All dishes for this restaurant already have generated images on disk! None are missing.');
+          }
+          const res = await fetch('/api/batch/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              restaurant_name: this.menuData.branch_name,
+              dishes: missingDishes,
+              resolution: this.selectedResolution
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            this.activeTab = 'batch';
+          } else {
+            alert('Failed to start missing dishes batch: ' + (data.detail || 'Error'));
           }
         },
 
