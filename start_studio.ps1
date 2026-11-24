@@ -1,4 +1,4 @@
-﻿# Saturdays AI Studio - PowerShell Launcher
+# Saturdays AI Studio - PowerShell Launcher
 Write-Host "=====================================================================" -ForegroundColor Yellow
 Write-Host "  Saturdays.co.in — Autonomous GPU Menu AI Studio" -ForegroundColor White
 Write-Host "  Local NVIDIA CUDA Workstation (RTX A4000 - 16 GB VRAM)" -ForegroundColor Cyan

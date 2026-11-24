@@ -1,4 +1,4 @@
-﻿# setup_lab_pc.ps1 — Automated Environment & Dependency Verification for Saturdays Studio Lab PCs
+# setup_lab_pc.ps1 — Automated Environment & Dependency Verification for Saturdays Studio Lab PCs
 Write-Host "=====================================================================" -ForegroundColor Yellow
 Write-Host "  Saturdays AI Studio — Lab PC Hardware & Environment Setup" -ForegroundColor White
 Write-Host "=====================================================================" -ForegroundColor Yellow
