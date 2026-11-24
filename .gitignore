@@ -1,0 +1,19 @@
+# Local Outputs & Cache
+output/
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Environments
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
