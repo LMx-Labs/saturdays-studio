@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "saturdays-lmx"
+  },
+  "targets": {
+    "saturdays-lmx": {
+      "hosting": {
+        "lmx-saturdays-studio": [
+          "lmx-saturdays-studio"
+        ]
+      }
+    }
+  }
+}

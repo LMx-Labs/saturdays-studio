@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "site": "saturdays-studio",
+    "site": "lmx-saturdays-studio",
     "public": "public",
     "ignore": [
       "firebase.json",

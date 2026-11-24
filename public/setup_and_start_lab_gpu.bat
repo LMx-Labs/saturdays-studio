@@ -1,54 +1,127 @@
 @echo off
-title Saturdays AI Studio — 1-Click Lab GPU Workstation
+title Saturdays AI Studio — 1-Click Lab GPU Setup & Launcher
+color 0A
 cls
-echo =====================================================================
+echo ===============================================================================
 echo   Saturdays.co.in — Autonomous GPU Menu AI Studio
-echo   Local NVIDIA CUDA Workstation (RTX A4000 - 16 GB VRAM)
-echo =====================================================================
+echo   1-Click Setup ^& Engine Launcher (NVIDIA RTX A4000 CUDA Workstations)
+echo ===============================================================================
 echo.
 
-:: 1. Check & start Ollama if not running
-echo [1/4] Checking Ollama (Port 11434)...
-curl -s http://localhost:11434/api/tags >nul 2>&1
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
+:: -----------------------------------------------------------------------------
+:: Step 1: Check Python Environment & Required Packages
+:: -----------------------------------------------------------------------------
+echo [1/5] Checking Python Environment & Dependencies...
+where python >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [INFO] Starting Ollama in background...
-    start /min "" ollama serve
+    echo [ERROR] Python was not found in PATH!
+    echo Please install Python 3.10+ or add it to Windows PATH.
+    pause
+    exit /b 1
+)
+
+python -c "import fastapi, uvicorn, pydantic" 2>nul
+if %errorlevel% neq 0 (
+    echo [INFO] First-time setup detected. Installing required packages...
+    pip install fastapi uvicorn pydantic requests
+) else (
+    echo [OK] Python dependencies verified.
+)
+
+:: -----------------------------------------------------------------------------
+:: Step 2: Check & Launch Ollama (Port 11434)
+:: -----------------------------------------------------------------------------
+echo.
+echo [2/5] Checking Ollama Sensory Prompt Engine (Port 11434)...
+curl -s -m 2 http://localhost:11434/api/tags >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [INFO] Ollama is not active. Starting Ollama in background...
+    where ollama >nul 2>&1
+    if %errorlevel% equ 0 (
+        start /min "Ollama Engine" ollama serve
+    ) else if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+        start /min "Ollama Engine" "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" serve
+    ) else if exist "%PROGRAMFILES%\Ollama\ollama.exe" (
+        start /min "Ollama Engine" "%PROGRAMFILES%\Ollama\ollama.exe" serve
+    ) else (
+        echo [WARNING] Ollama executable not found in PATH.
+        echo Procedural sensory prompts will be used as fallback.
+    )
     timeout /t 2 >nul
 ) else (
-    echo [OK] Ollama sensory prompt engine is active.
+    echo [OK] Ollama is already active on port 11434.
 )
 
-:: 2. Check & start ComfyUI on RTX A4000 GPU if not running
-echo [2/4] Checking ComfyUI (Port 8188)...
-curl -s http://127.0.0.1:8188/system_stats >nul 2>&1
+:: -----------------------------------------------------------------------------
+:: Step 3: Check & Launch ComfyUI on NVIDIA RTX A4000 (Port 8188)
+:: -----------------------------------------------------------------------------
+echo.
+echo [3/5] Checking ComfyUI GPU Synthesis Engine (Port 8188)...
+curl -s -m 2 http://127.0.0.1:8188/system_stats >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [INFO] Launching ComfyUI engine on NVIDIA RTX A4000...
-    set "COMFY_PY=C:\Users\Student\AppData\Local\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\.venv\Scripts\python.exe"
-    set "COMFY_MAIN=C:\Users\Student\AppData\Local\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\main.py"
-    set "COMFY_YAML=C:\Users\Student\AppData\Local\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\extra_model_paths.yaml"
-    if exist "%COMFY_PY%" (
-        start /min "ComfyUI GPU Engine" "%COMFY_PY%" "%COMFY_MAIN%" --listen 127.0.0.1 --port 8188 --extra-model-paths-config "%COMFY_YAML%" --dont-print-server
-        timeout /t 3 >nul
+    echo [INFO] ComfyUI is not active. Locating ComfyUI installation...
+    set "COMFY_FOUND=0"
+    
+    :: Path A: Standard Desktop install on Lab PCs
+    set "CPATH_A=C:\Users\Student\AppData\Local\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI"
+    if exist "%CPATH_A%\main.py" (
+        set "COMFY_FOUND=1"
+        echo [INFO] Found ComfyUI at %CPATH_A%
+        start /min "ComfyUI GPU Engine" "%CPATH_A%\.venv\Scripts\python.exe" "%CPATH_A%\main.py" --listen 127.0.0.1 --port 8188 --extra-model-paths-config "%CPATH_A%\extra_model_paths.yaml" --dont-print-server
+    )
+    
+    :: Path B: LocalAppData path fallback
+    if "%COMFY_FOUND%"=="0" (
+        set "CPATH_B=%LOCALAPPDATA%\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI"
+        if exist "%CPATH_B%\main.py" (
+            set "COMFY_FOUND=1"
+            echo [INFO] Found ComfyUI at %CPATH_B%
+            start /min "ComfyUI GPU Engine" "%CPATH_B%\.venv\Scripts\python.exe" "%CPATH_B%\main.py" --listen 127.0.0.1 --port 8188 --extra-model-paths-config "%CPATH_B%\extra_model_paths.yaml" --dont-print-server
+        )
+    )
+    
+    if "%COMFY_FOUND%"=="0" (
+        echo [WARNING] ComfyUI directory not found at standard path.
+        echo If ComfyUI is installed in a custom location, please start it manually.
     ) else (
-        echo [WARNING] ComfyUI path not found at standard location. If on another Lab PC, launch ComfyUI Desktop.
+        echo [INFO] Initializing ComfyUI on NVIDIA RTX A4000 GPU...
+        timeout /t 4 >nul
     )
 ) else (
-    echo [OK] ComfyUI GPU synthesis engine is active.
+    echo [OK] ComfyUI GPU engine is already active on port 8188.
 )
 
-:: 3. Launch local Studio Server on Port 8000
-echo [3/4] Starting Local Studio API Server (Port 8000)...
-set "STUDIO_DIR=%~dp0"
-cd /d "%STUDIO_DIR%"
-start /min "Saturdays Studio Server" python pipeline_dashboard.py --port 8000
+:: -----------------------------------------------------------------------------
+:: Step 4: Clean Old Process & Start Saturdays Studio Daemon (Port 8000)
+:: -----------------------------------------------------------------------------
+echo.
+echo [4/5] Starting Saturdays AI Studio Local Server (Port 8000)...
+powershell -Command "$c = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -gt 0 }; if ($c) { Stop-Process -Id ($c.OwningProcess | Select-Object -Unique) -Force -ErrorAction SilentlyContinue }" >nul 2>&1
+timeout /t 1 >nul
 
-:: 4. Launch browser directly to https://saturdays.co.in/studio
-echo [4/4] Opening Saturdays AI Studio in browser...
+start /min "Saturdays Studio Server" python pipeline_dashboard.py --port 8000
 timeout /t 2 >nul
-start "" "https://saturdays.co.in/studio"
+echo [OK] Saturdays Studio server running on http://localhost:8000.
+
+:: -----------------------------------------------------------------------------
+:: Step 5: Launch Browser to Studio
+:: -----------------------------------------------------------------------------
+echo.
+echo [5/5] Opening Saturdays AI Studio in browser...
+timeout /t 1 >nul
+start "" "https://lmx-saturdays-studio.web.app"
 
 echo.
-echo =====================================================================
-echo   Studio is running! Connected to local NVIDIA RTX A4000 GPU.
-echo   You can close this window or keep it open.
-echo =====================================================================
+echo ===============================================================================
+echo   Setup Complete!
+echo   * Studio Dashboard:  https://lmx-saturdays-studio.web.app
+echo   * Standalone WebApp: https://lmx-saturdays-studio.web.app
+echo   * Local GPU Engine:  http://localhost:8000
+echo.
+echo   All services are running in background. You can safely minimize this window.
+echo ===============================================================================
+timeout /t 5 >nul
+exit /b 0
