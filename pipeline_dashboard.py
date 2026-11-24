@@ -1333,7 +1333,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                   <div class="flex gap-4">
                     <!-- Thumbnail preview -->
                     <div class="w-24 h-24 rounded-lg bg-black/40 border border-white/10 flex-shrink-0 overflow-hidden relative group">
-                      <img x-show="dish.local_image_url || dish.live_image_url" :src="dish.local_image_url || dish.live_image_url" class="w-full h-full object-cover">
+                      <img x-show="dish.local_image_url || dish.live_image_url" :src="formatImageUrl(dish.local_image_url) || dish.live_image_url" class="w-full h-full object-cover">
                       <div x-show="!dish.local_image_url && !dish.live_image_url" class="w-full h-full flex flex-col items-center justify-center text-slate-600 text-xs text-center p-1">
                         <span>📷</span>
                         <span>No image</span>
@@ -1604,6 +1604,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <script>
     function studioApp() {
       return {
+        apiBase: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? '' : 'http://127.0.0.1:8000',
+        apiUrl(path) {
+          return `${this.apiBase}${path}`;
+        },
+        formatImageUrl(url) {
+          if (!url) return '';
+          if (url.startsWith('http://') || url.startsWith('https://')) return url;
+          return `${this.apiBase}${url}`;
+        },
         activeTab: 'live',
         status: {},
         branches: [],
@@ -1656,7 +1665,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             }
           } catch (e) {
             try {
-              const relRes = await fetch('/api/system/check');
+              const relRes = await fetch(this.apiUrl('/api/system/check'));
               if (relRes.ok) {
                 this.sysCheck = await relRes.json();
                 return;
@@ -1675,14 +1684,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
         async fetchStatus() {
           try {
-            const res = await fetch('/api/status');
+            const res = await fetch(this.apiUrl('/api/status'));
             this.status = await res.json();
           } catch (e) {}
         },
 
         async fetchBranches() {
           try {
-            const res = await fetch('/api/branches');
+            const res = await fetch(this.apiUrl('/api/branches'));
             this.branches = await res.json();
             if (this.branches.length > 0 && !this.selectedBranchId) {
               this.selectedBranchId = this.branches[0].id;
@@ -1694,7 +1703,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         async loadMenu(branchId) {
           if (!branchId) return;
           try {
-            const res = await fetch(`/api/branches/${branchId}/menu`);
+            const res = await fetch(this.apiUrl(`/api/branches/${branchId}/menu`));
             this.menuData = await res.json();
           } catch (e) {}
         },
@@ -1736,7 +1745,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         async renderSingleDish(dish) {
           dish.rendering = true;
           try {
-            const res = await fetch('/api/dish/render', {
+            const res = await fetch(this.apiUrl('/api/dish/render'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1768,7 +1777,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         async uploadSingleDish(dish) {
           dish.uploading = true;
           try {
-            const res = await fetch('/api/dish/upload', {
+            const res = await fetch(this.apiUrl('/api/dish/upload'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1804,7 +1813,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           if (missingDishes.length === 0) {
             return alert('🎉 All dishes for this restaurant already have generated images on disk! None are missing.');
           }
-          const res = await fetch('/api/batch/start', {
+          const res = await fetch(this.apiUrl('/api/batch/start'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1828,7 +1837,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           });
           if (allDishes.length === 0) return alert('No dishes found.');
 
-          const res = await fetch('/api/batch/start', {
+          const res = await fetch(this.apiUrl('/api/batch/start'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1858,7 +1867,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           this.autoRunning = true;
           try {
             // Step 1: Start GPU Batch Generation
-            const startRes = await fetch('/api/batch/start', {
+            const startRes = await fetch(this.apiUrl('/api/batch/start'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1877,13 +1886,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             // Step 2: Poll until batch completes
             while (true) {
               await new Promise(r => setTimeout(r, 2000));
-              const sRes = await fetch('/api/batch/status');
+              const sRes = await fetch(this.apiUrl('/api/batch/status'));
               const sData = await sRes.json();
               if (!sData.is_running) break;
             }
 
             // Step 3: Automatically map to Firebase Storage
-            await fetch('/api/firebase/map-bucket', {
+            await fetch(this.apiUrl('/api/firebase/map-bucket'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1893,7 +1902,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
             // Step 4: Publish live / mobile-safe to Saturdays if authenticated
             if (this.status.auth?.has_token) {
-              await fetch('/api/branch/upload-all', {
+              await fetch(this.apiUrl('/api/branch/upload-all'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1917,7 +1926,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         async mapAllToFirebase() {
           this.mappingFirebase = true;
           try {
-            const res = await fetch('/api/firebase/map-bucket', {
+            const res = await fetch(this.apiUrl('/api/firebase/map-bucket'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1947,7 +1956,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
           this.publishingAll = true;
           try {
-            const res = await fetch('/api/branch/upload-all', {
+            const res = await fetch(this.apiUrl('/api/branch/upload-all'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1980,7 +1989,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           }
           this.fixingMobile = true;
           try {
-            const res = await fetch('/api/branch/fix-mobile-urls', {
+            const res = await fetch(this.apiUrl('/api/branch/fix-mobile-urls'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -2005,13 +2014,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
         async pollBatch() {
           try {
-            const res = await fetch('/api/batch/status');
+            const res = await fetch(this.apiUrl('/api/batch/status'));
             this.batch = await res.json();
           } catch (e) {}
         },
 
         async stopBatch() {
-          await fetch('/api/batch/stop', { method: 'POST' });
+          await fetch(this.apiUrl('/api/batch/stop'), { method: 'POST' });
         },
 
         handleFileSelect(e) {
@@ -2033,7 +2042,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           formData.append('gemini_key', this.geminiApiKey);
 
           try {
-            const res = await fetch('/api/vision/extract', {
+            const res = await fetch(this.apiUrl('/api/vision/extract'), {
               method: 'POST',
               body: formData
             });
@@ -2053,7 +2062,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         async sendExtractedToBatch() {
           if (this.extractedDishes.length === 0) return;
           const restName = this.customRestaurantName || 'Extracted Restaurant';
-          const res = await fetch('/api/batch/start', {
+          const res = await fetch(this.apiUrl('/api/batch/start'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2070,7 +2079,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         },
 
         async saveToken() {
-          await fetch('/api/auth/token', {
+          await fetch(this.apiUrl('/api/auth/token'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: this.tempToken })
@@ -2082,7 +2091,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         async performLogin() {
           this.loggingIn = true;
           try {
-            const res = await fetch('/api/auth/login', {
+            const res = await fetch(this.apiUrl('/api/auth/login'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email: this.loginEmail, password: this.loginPassword })
