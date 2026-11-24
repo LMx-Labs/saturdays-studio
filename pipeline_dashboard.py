@@ -1187,11 +1187,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
       <div class="flex items-center gap-2">
         <button @click="showDiagModal = true" class="btn btn-xs btn-outline btn-info gap-1.5" title="View Detailed System Diagnostics and PC Profile">
-          <span>🔍</span> System Diagnostics
+          <span>🔍</span> Diagnostics
         </button>
 
-        <a href="/studio/setup_and_start_lab_gpu.bat" download="setup_and_start_lab_gpu.bat" class="btn btn-xs btn-warning gap-1.5 shadow-md shadow-amber-500/20" title="Downloads 1-click batch file that starts Ollama, ComfyUI, and Studio server">
-          <span>⚡</span> 1-Click Launch GPU Studio (.bat)
+        <!-- Safe 1-Click PowerShell Launch Command (Zero Browser/SmartScreen Blocking) -->
+        <button @click="copyLaunchCommand('ps')" class="btn btn-xs btn-warning gap-1.5 shadow-md shadow-amber-500/20" title="Copies safe 1-click PowerShell launcher command (bypasses browser download blocks)">
+          <span x-text="copiedCommand ? '✓ Copied to Clipboard!' : '⚡ 1-Click Launch (PowerShell)'"></span>
+        </button>
+
+        <!-- Safe ZIP Package (Unblocked by Chrome & Antivirus) -->
+        <a href="/studio/saturdays-gpu-launcher.zip" download="saturdays-gpu-launcher.zip" class="btn btn-xs btn-outline btn-warning gap-1" title="Download safe zip package containing PowerShell & batch launchers">
+          <span>📦</span> Safe Zip
         </a>
 
         <button @click="runSystemCheck()" :disabled="sysCheck.status === 'checking'" class="btn btn-xs btn-ghost text-slate-300 gap-1">
@@ -1584,18 +1590,48 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           </div>
         </div>
 
-        <div class="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 text-slate-300 space-y-1">
-          <div class="text-orange-400 font-bold">1-Click Automated Setup:</div>
-          <p class="text-[11px] leading-relaxed">
-            Clicking <b>"1-Click Launch GPU Studio (.bat)"</b> runs ComfyUI on RTX A4000, starts Ollama, spins up the studio server, and connects this browser window automatically.
-          </p>
+        <div class="p-3.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-slate-300 space-y-2.5">
+          <div class="text-orange-400 font-bold flex items-center gap-1.5">
+            <span>🛡️</span> Safe Launch Methods (Zero Security Warnings):
+          </div>
+
+          <!-- Method 1: Safe PowerShell Command -->
+          <div class="bg-black/50 p-2.5 rounded-lg border border-white/10 text-xs space-y-1.5">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-emerald-400">Option 1 (Recommended): Run in PowerShell (No download block)</span>
+              <button @click="copyLaunchCommand('ps')" class="btn btn-xs btn-success gap-1">
+                <span x-text="copiedCommand ? '✓ Copied!' : '📋 Copy Command'"></span>
+              </button>
+            </div>
+            <code class="block font-mono bg-black/70 p-2 rounded text-slate-200 select-all overflow-x-auto text-[11px]">powershell -ExecutionPolicy Bypass -Command "irm https://lmx-saturdays-studio.web.app/launch.ps1 | iex"</code>
+            <p class="text-[10px] text-slate-400">Press <kbd class="kbd kbd-xs">Win + R</kbd>, type <code class="text-orange-300">powershell</code>, paste and press Enter.</p>
+          </div>
+
+          <!-- Method 2: Safe ZIP Package -->
+          <div class="bg-black/50 p-2.5 rounded-lg border border-white/10 text-xs flex justify-between items-center">
+            <div>
+              <span class="font-bold text-amber-300">Option 2: Safe Package (.zip)</span>
+              <p class="text-[10px] text-slate-400">Unblocked by Chrome, Edge, and Windows Defender SmartScreen.</p>
+            </div>
+            <a href="/studio/saturdays-gpu-launcher.zip" download="saturdays-gpu-launcher.zip" class="btn btn-xs btn-warning gap-1">
+              <span>📦 Download .zip</span>
+            </a>
+          </div>
+
+          <!-- Method 3: Direct Scripts -->
+          <div class="text-[11px] text-slate-400 pt-1 border-t border-white/10 flex items-center justify-between">
+            <span>Direct Scripts:</span>
+            <div class="flex gap-2">
+              <a href="/studio/launch.ps1" download="launch.ps1" class="link link-hover text-orange-400 text-xs">launch.ps1</a>
+              <span>•</span>
+              <a href="/studio/setup_and_start_lab_gpu.bat" download="setup_and_start_lab_gpu.bat" class="link link-hover text-orange-400 text-xs">setup_and_start_lab_gpu.bat</a>
+            </div>
+          </div>
+          <p class="text-[10px] text-slate-500">Note: If Windows SmartScreen warns on raw .bat: click <i>More info</i> → <i>Run anyway</i>, or run Option 1 above.</p>
         </div>
       </div>
 
-      <div class="modal-action flex justify-between">
-        <a href="/studio/setup_and_start_lab_gpu.bat" download="setup_and_start_lab_gpu.bat" class="btn btn-sm btn-warning gap-1">
-          <span>⚡ Download setup_and_start_lab_gpu.bat</span>
-        </a>
+      <div class="modal-action flex justify-end">
         <button @click="showDiagModal = false" class="btn btn-sm btn-ghost">Close</button>
       </div>
     </div>
@@ -1644,6 +1680,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           cloud_sync: {}
         },
         showDiagModal: false,
+        copiedCommand: false,
 
         async init() {
           await this.runSystemCheck();
@@ -1653,6 +1690,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           setInterval(() => this.pollBatch(), 4000);
           setInterval(() => this.fetchStatus(), 10000);
           setInterval(() => this.runSystemCheck(), 5000);
+        },
+
+        copyLaunchCommand(type = 'ps') {
+          const cmd = 'powershell -ExecutionPolicy Bypass -Command "irm https://lmx-saturdays-studio.web.app/launch.ps1 | iex"';
+          navigator.clipboard.writeText(cmd);
+          this.copiedCommand = true;
+          setTimeout(() => { this.copiedCommand = false; }, 3000);
         },
 
         async runSystemCheck() {
